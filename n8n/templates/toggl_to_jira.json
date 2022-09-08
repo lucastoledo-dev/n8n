@@ -1,0 +1,237 @@
+{
+  "name": "Toggl To Jira",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "35d31e11-3ddb-4a63-8af6-2d7285f9d349",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "url": "https://api.track.toggl.com/api/v9/me/time_entries",
+        "options": {},
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "start_date",
+              "value": "2022-09-05"
+            },
+            {
+              "name": "end_date",
+              "value": "2022-09-07"
+            }
+          ]
+        }
+      },
+      "id": "0fa81044-4c5c-4b39-8d2f-5bc73aac5167",
+      "name": "Get Times From Toggl",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        160,
+        680
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "2",
+          "name": "Toggl API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Code here will run only once, no matter how many input items there are.\n// More info and help: https://docs.n8n.io/nodes/n8n-nodes-base.function\n// Tip: You can use luxon for dates and $jmespath for querying JSON structures\n\n// Loop over inputs and add a new field called 'myNewField' to the JSON of each one\n\n//console.log('www',items);\n$result = items[0].json.filter((b) => { return b.tags==null });\n\nconst formatDate = date => {\n  const d = new Date(date);\n  let month = (d.getMonth() + 1).toString()\n  let day = d.getDate().toString()\n  const year = d.getFullYear()\n  if (month.length < 2) {\n      month = '0' + month\n  }\n  if (day.length < 2) {\n      day = '0' + day\n  }\n  return [ year, month, day ].join('-')\n}\n\nfunction map_(item){\n  var a = new Date(item.start);\n  //var started_ = a.getUTCFullYear()+'-'+a.getUTCMonth()+1+'-'+a.getUTCDay()+'T'+ a.getUTCHours()+':'+a.getUTCMinutes()+':00.000-0300';\n  var started_ = formatDate(new Date(item.start))+'T'+ a.getUTCHours()+':'+a.getUTCMinutes()+':00.000-0000';\n  return {\n    ...item,\n    jiraKey: item.description.match(/\\[(.*?)\\]/)[1],\n    jiraComment: item.description.match(/\\](.*)/)[1],\n    started: started_\n  }\n}\n\n$result = items[0].json.map(map_);\n\n\n$result = $result.filter((b) => {return b.jiraKey!=\"\" && b.tags==null});\n\nreturn $result;\n\n\n"
+      },
+      "id": "db5ff6b4-6487-418c-b83f-99c05003d3a4",
+      "name": "Filter without tag 'jira'",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        400,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareServerApi",
+        "requestMethod": "POST",
+        "url": "=https://jira.wkm.com.br/rest/api/2/issue/{{$json[\"jiraKey\"]}}/worklog",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "comment",
+              "value": "={{$json[\"jiraComment\"]}}"
+            },
+            {
+              "name": "timeSpentSeconds",
+              "value": "={{$json[\"duration\"]}}"
+            },
+            {
+              "name": "started",
+              "value": "={{$json[\"started\"]}}"
+            }
+          ]
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "029e80e4-a95b-4e64-bc40-31005280e670",
+      "name": "Send TimeTrack To Jira",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        640,
+        680
+      ],
+      "credentials": {
+        "jiraSoftwareServerApi": {
+          "id": "1",
+          "name": "Jira SW Server account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "requestMethod": "PUT",
+        "url": "=https://api.track.toggl.com/api/v9/workspaces/{{$node[\"Filter without tag 'jira'\"].json[\"workspace_id\"]}}/time_entries/{{$node[\"Filter without tag 'jira'\"].json[\"id\"]}}",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json",
+          "bodyContentCustomMimeType": "application/json"
+        },
+        "bodyParametersJson": "{ \"tags\" : [\"jira\"] }"
+      },
+      "id": "f63a0708-85e1-42ab-9831-027f1a0e899f",
+      "name": "Insert Tag Toggl1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        880,
+        680
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "2",
+          "name": "Toggl API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "a5355b02-7f40-4d6c-8ca6-f6563fa05088",
+        "options": {}
+      },
+      "id": "4121aae8-a5ec-4c2d-b21e-a07217fbd31b",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        860
+      ],
+      "webhookId": "a5355b02-7f40-4d6c-8ca6-f6563fa05088"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get Times From Toggl": {
+      "main": [
+        [
+          {
+            "node": "Filter without tag 'jira'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter without tag 'jira'": {
+      "main": [
+        [
+          {
+            "node": "Send TimeTrack To Jira",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send TimeTrack To Jira": {
+      "main": [
+        [
+          {
+            "node": "Insert Tag Toggl1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Times From Toggl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Times From Toggl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "id": 2,
+  "meta": {
+    "instanceId": "3d4d584195d0722532189991b159e1a7de686a77fd12aac9fe210e1284dc3fdb"
+  },
+  "tags": [
+    {
+      "id": "1",
+      "name": "toggl",
+      "createdAt": "2022-09-06T15:53:12.561Z",
+      "updatedAt": "2022-09-06T15:53:12.561Z"
+    },
+    {
+      "id": "2",
+      "name": "jira",
+      "createdAt": "2022-09-06T15:53:14.193Z",
+      "updatedAt": "2022-09-06T15:53:14.193Z"
+    }
+  ]
+}
